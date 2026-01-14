@@ -1,5 +1,5 @@
 # Spectrum-Guided-Model-Merging---Focused-Fusion-on-Informative-Layers
-Il progetto implementa il Spectrum-Guided Model Merging per unire due ResNet18 addestrate su FashionMNIST e KMNIST. Calcolando l'SNR spettrale dei pesi, il codice confronta diverse strategie di fusione (media, selezione per soglia, dinamica) per ottenere un modello unico performante su entrambi i task.
+I progetti applicano il Spectrum-Guided Model Merging su modelli Vision (ResNet18) e NLP (BERT). Calcolando l'SNR spettrale, sono state testate strategie avanzate di fusione (es. SNR Winner, Spectrum Reset) contro la media standard, ottimizzando le performance congiunte su task diversi (FashionMNIST/KMNIST e SST-2/CoLA/Emotion).
 # Comparative Analysis of Transformer Model Merging Techniques: Standard vs Spectrum Hybrid
 
 **Authors:** Mariastella Gioia La Rocca, Mia Rodotà  
