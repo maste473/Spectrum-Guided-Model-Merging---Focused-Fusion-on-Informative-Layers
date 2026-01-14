@@ -1,5 +1,5 @@
 # Spectrum-Guided-Model-Merging---Focused-Fusion-on-Informative-Layers
-I progetti applicano il Spectrum-Guided Model Merging su modelli Vision (ResNet18) e NLP (BERT). Calcolando l'SNR spettrale, sono state testate strategie avanzate di fusione (es. SNR Winner, Spectrum Reset) contro la media standard, ottimizzando le performance congiunte su task diversi (FashionMNIST/KMNIST e SST-2/CoLA/Emotion).
+The projects apply Spectrum-Guided Model Merging to Vision (ResNet18) and NLP (BERT) models. By calculating the spectral SNR, advanced merging strategies (e.g., SNR Winner, Spectrum Reset) were tested against the standard average, optimizing joint performance on different tasks (FashionMNIST/KMNIST and SST-2/CoLA/Emotion).
 
 **Authors:** Mariastella Gioia La Rocca, Mia Rodotà  
 **Affiliation:** Sapienza University of Rome  
