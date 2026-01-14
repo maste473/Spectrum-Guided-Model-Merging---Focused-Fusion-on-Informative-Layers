@@ -1,0 +1,262 @@
+\documentclass{article}
+
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{overpic}
+\usepackage{amssymb}
+\usepackage{tabularx}
+
+\usepackage[accepted]{dlaiml2025}
+
+%%% STUDENTS: FILL IN WITH YOUR OWN INFORMATION
+\dlaititlerunning{Spectrum-Guided Model Merging: Focused Fusion on Informative Layers}
+
+\begin{document}
+
+\twocolumn[
+%%% STUDENTS: FILL IN WITH YOUR OWN INFORMATION
+\dlaititle{Spectrum-Guided Model Merging: Focused Fusion on Informative Layers}
+
+\begin{center}\today\end{center}
+
+\begin{center}
+    \textbf{Mariastella Gioia La Rocca} \quad \textbf{Mia Rodotà}
+\end{center}
+
+
+\begin{center}
+    \textit{Sapienza University of Rome}
+\end{center}
+
+\vskip 0.1in
+
+\dlaicorrespondingauthor{Mariastella Gioia La Rocca}{larocca.2115586@studenti.uniroma1.it}
+\dlaicorrespondingauthor{Mia Rodotà}{rodota.2148380@studenti.uniroma1.it}
+
+\vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}
+
+\begin{abstract}
+%
+This study investigates the efficacy of Spectral Signal-to-Noise Ratio (SNR), derived from Random Matrix Theory (RMT), as a precise metric for merging deep learning models. By analyzing the eigenvalue distributions of weight matrices through the Marchenko-Pastur Law, we distinguish between informational "signal" and random "noise." We compare traditional weight averaging against advanced spectral strategies—including "Spectrum Base Reset" and "SNR Winner Take All"—across BERT-based Transformers (NLP) and ResNet-18 (Vision). Our findings reveal that while spectral methods provide significant gains in structural NLP tasks, they exhibit high sensitivity and potential instability in convolutional architectures like ResNet.
+
+\end{abstract}
+
+% ------------------------------------------------------------------------------
+\section{Introduction}
+
+Model merging aims to create a multi-task expert by combining pre-trained weights without additional costly training. However, a "Standard Merge" (simple arithmetic mean) often results in task interference, where the noise of one expert dilutes the critical signal of another. This report evaluates whether Spectral SNR can effectively act as a "routing" mechanism to preserve high-information layers while discarding noisy or irrelevant parameters.
+
+\section{Methodology}
+
+ \subsection{Spectral SNR Calculation}
+\begin{enumerate}
+    \item \textbf{Covariance Matrix:}  
+    For a weight matrix $W$ (reshaped to 2D if necessary), we compute the covariance matrix
+    \[
+    C = \frac{1}{M} W^{\top} W \quad \text{(or } C = \frac{1}{N} W W^{\top}\text{)},
+    \]
+    where $M$ is the number of features.
+
+    \item \textbf{Eigenvalue Decomposition:}  
+    We extract the eigenvalues $\{\lambda_i\}$ of $C$. According to Random Matrix Theory (RMT), if a matrix contains only random noise, its eigenvalues remain within a \emph{bulk} defined by a theoretical upper bound $\lambda_{+}$.
+
+    \item \textbf{Signal vs. Noise:}  
+    Eigenvalues satisfying
+    \[
+    \lambda > \lambda_{+}
+    \]
+    are interpreted as \emph{signal} (components the model has effectively learned), whereas eigenvalues
+    \[
+    \lambda \leq \lambda_{+}
+    \]
+    correspond to \emph{noise} (random fluctuations or uninformative weights).
+
+    \item \textbf{Signal-to-Noise Ratio (SNR):}  
+    In our NLP experiments, the SNR is defined as
+    \[
+    \mathrm{SNR} = \frac{\sum_{\lambda_i > \lambda_{+}} \lambda_i}{\sum_{\lambda_i \leq \lambda_{+}} \lambda_i}.
+    \]
+    In the ResNet experiment, we adopt a simplified definition:
+    \[
+    \mathrm{SNR} = \frac{\lambda_{\max}}{\lambda_{\mathrm{median}}},
+    \]
+    where $\lambda_{\max}$ represents the peak signal and $\lambda_{\mathrm{median}}$ characterizes the noise bulk.
+\end{enumerate}
+
+\subsection{Merging Strategy Logic}
+\begin{description}
+    \item[Standard Merge:] A simple arithmetic average ($0.5A + 0.5B$). It treats all layers as equally important.
+    
+    \item[Spectrum Base Reset:] High-SNR layers are averaged. Low-SNR layers (noise) are reset to the original pre-trained weights of the base model. The goal is to ``clean'' the model by removing noisy fine-tuned weights.
+    
+    \item[SNR Winner (Top) / Mean (Low):] For high-SNR layers, we keep the weights of the model with the higher SNR (the ``winner''). For low-SNR layers, we fall back to a standard average.
+    
+    \item[\texttt{snr\_lowA} / \texttt{snr\_lowB}:] If the combined signal is above the threshold, we average. If it is below (low signal), we replace the layer with the weights of Model A (or B) exclusively. This tests if ``forcing'' one expert's architecture in noisy regions helps stability.
+    
+    \item[\texttt{snr\_max}:] If the signal is low, instead of averaging, we take the weights of the model that has the higher SNR for that specific layer.
+    
+    \item[SNR Weighted Dynamic:] Instead of a 50/50 split, each layer is merged using a weighted average where the weights are proportional to the relative SNR of each model (e.g., if $\text{SNR}_A > \text{SNR}_B$, Model A contributes more to that layer).
+\end{description}
+
+\begin{table}[h!]
+    \caption{Merging Strategies Logic.}
+    \label{tab:merging_strategies}
+    \begin{center}
+
+    \begin{small} 
+    \resizebox{\linewidth}{!}{
+    \begin{tabular}{l|c|c|l}
+        \toprule
+        \textbf{Strategy} & \textbf{High SNR} & \textbf{Low SNR} & \textbf{Goal} \\
+        \midrule
+        Standard & Avg & Avg & Baseline \\
+        Reset & Avg & Base Init & Denoise \\
+        SNR Win & Winner & Avg & Specialize \\
+        snr\_lowA & Avg & Force A & Stabilize \\
+        snr\_max & Avg & Winner & Max Signal \\
+        Weighted & $\alpha$-Mix & Avg & Soft Balance \\
+        \bottomrule
+    \end{tabular}
+    }
+    \end{small}
+    \end{center}
+    \vskip -0.1in
+\end{table}
+
+% ------------------------------------------------------------------------------
+ \section{Implementation}
+We tested three distinct experimental setups:
+
+\begin{enumerate}
+    \item \textbf{NLP (SST-2 \& Emotion):} Merging a Sentiment Analysis expert with an Emotion expert. The dataset for Emotion has 6 classes, unlike SST-2 that has two. While the ``body'' of the model was merged, the ``head'' (classifier) had to be re-initialized, introducing random noise. Despite this the merging worked well, but we also wanted to implement a mathematically ``perfect'' merge.
+    
+    \item \textbf{NLP (SST-2 \& CoLA):} Merging Sentiment with Linguistic Acceptability (Grammar). After the first setup we switched to CoLA because both SST-2 and CoLA are natively binary (2 classes), and therefore all layers, including the classifier, could be merged without re-initialization.
+    
+    \item \textbf{Vision (FashionMNIST \& KMNIST):} Merging two ResNet-18 experts specialized in different image domains.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+ \section{Results and Analysis}
+
+\subsection{Comparative Analysis of NLP Tasks}
+The behavior of spectral merging varies significantly based on the task pair:
+
+\begin{itemize}
+    \item \textbf{SST-2 \& Emotion:} The SNR Winner strategy achieved superior performance over the Standard Merge. For SST-2, the accuracy reached $\sim 0.885$ at the Top 25\% threshold, while Emotion reached $\sim 0.705$ at the Top 70\% threshold. This suggests that for semantically related tasks, choosing the ``stronger'' signal preserves specialized knowledge better than averaging. \textit{ See Figure 1}
+    
+ \begin{figure}[t!]
+    \centering
+    % PRIMA IMMAGINE: CoLA (Grammatica)
+    \includegraphics[width=\linewidth]{nlp_emotion_results_2.jpeg}
+    
+    \vspace{0.2cm} % Un piccolo spazio bianco per separarle
+    
+    % SECONDA IMMAGINE: Emotion (Semantica)
+    \includegraphics[width=\linewidth]{nlp_SST-2_performance_results_1.jpeg}
+    
+ \caption{\textbf{NLP Task Analysis.} 
+    \textit{Top:} Performance on Emotion. The \textit{SNR Winner} strategy (green line) shows a progressive improvement, surpassing the \textit{Standard Merge} baseline (dashed line) as the retained spectrum increases (50\%-70\%).
+    \textit{Bottom:} Performance on SST-2 (Sentiment). Here, the \textit{SNR Winner} consistently outperforms the baseline across all percentages, highlighting robustness in sentiment tasks, while \textit{Spectrum Base Reset} (blue line) requires higher retention rates to approach baseline performance.}
+\label{fig:nlp_comparison}
+\end{figure}
+  
+    \item \textbf{SST-2 \& CoLA:} Results were more divergent. For CoLA, the SNR Winner Strategy significantly outperformed the baseline, reaching $\sim 0.685$. However, for SST-2, all spectral methods fell below the Standard Merge baseline ($\sim 0.695$). This indicates that Sentiment Analysis (SST-2) may rely on distributed, lower-SNR information that is inadvertently discarded during selective merging, whereas Grammar (CoLA) is more ``peak-dependent.'' \textit{See Figure 2}
+\end{itemize}
+
+\begin{figure}[t!]
+    \centering
+    % PRIMA IMMAGINE: CoLA (Successo del metodo spettrale)
+    \includegraphics[width=\linewidth]{nlp_cola_results_2.jpeg}
+    
+    \vspace{0.2cm} % Spazio tra i due
+    
+    % SECONDA IMMAGINE: SST-2 (Difficoltà/Baseline migliore)
+    \includegraphics[width=\linewidth]{nlp_SST-2_results_1.jpeg}
+    
+    \caption{\textbf{NLP Task Analysis: CoLA vs. SST-2.} 
+    \textit{Top:} On CoLA (Grammar), the \textit{SNR Winner} strategy (orange bar) outperforms Standard Merge, proving that structural rules are localized in high-SNR weights.
+    \textit{Bottom:} On SST-2 (Sentiment), spectral strategies fail to beat the Standard Merge baseline (blue bar), indicating that sentiment information is distributed and damaged by aggressive weight selection.}
+    \label{fig:nlp_cola_sst2}
+\end{figure}
+
+\subsection{Vision Domain: ResNet-18 (FashionMNIST & KMNIST)}
+The results for ResNet-18 reveal significant instability compared to Transformers (\textit{See Figure 3)}:
+
+\begin{figure}[t!]
+    \centering
+    % IMMAGINE 1: Task C (FashionMNIST)
+    \includegraphics[width=\linewidth]{vision_results_1.jpeg}
+    
+    \vspace{0.2cm} 
+    
+    % IMMAGINE 2: Task D (KMNIST)
+    \includegraphics[width=\linewidth]{vision_results_2.jpeg}
+    
+    \caption{\textbf{ResNet-18 Stability Analysis.} 
+    Top: Accuracy on Task C (FashionMNIST). Note how \texttt{snr\_lowB} (green line) causes a performance crash. 
+    Bottom: Accuracy on Task D (KMNIST), showing the opposite trend where \texttt{snr\_lowA} fails. This symmetry highlights the extreme sensitivity of convolutional layers to the "wrong" expert weights.}
+    \label{fig:vision_vertical}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Expert vs. Non-Expert Performance:} In Task C (FashionMNIST), the \texttt{snr\_lowA} strategy performed best at higher thresholds, nearing the expert accuracy of $\sim 0.91$. Conversely, \texttt{snr\_lowB} caused accuracy to crash toward the non-expert baseline ($\sim 0.15$) as the threshold increased.
+    
+    \item \textbf{Strategy Instability:} In Task D (KMNIST), most spectral strategies (\texttt{max}, \texttt{weighted\_dynamic}) performed poorly, staying near or below the standard merge ($\sim 0.31$) and far below the expert baseline ($\sim 0.98$).
+    
+    \item \textbf{Analysis:} Convolutional layers are highly sensitive to weight discontinuities. Selective merging in ResNet often breaks the hierarchical feature extraction pipeline, leading to ``all-or-nothing'' performance based on whether a specific critical layer was preserved or averaged.
+\end{itemize}
+
+\subsection{Deep Dive into Merging Strategies}
+
+\begin{itemize}
+    \item \textbf{Standard Merge:} Provides a consistent, albeit mediocre, baseline. It is resilient but suffers from signal dilution.
+    
+    \item \textbf{SNR Winner / SNR Max:} These are high-reward but high-risk. They work best when task features are concentrated in specific layers (like CoLA) but can fail if the ``winner'' for one task is the ``noise'' for another.
+    
+    \item \textbf{Spectrum Base Reset:} Shows a steady upward trend in Transformers as more layers are included (Top 70\%), but it is often too aggressive, discarding ``quiet'' but essential parameters.
+    
+    \item \textbf{SNR Weighted Dynamic:} Attempted to balance both signals but often reverted to the mean, showing limited gains over standard merging in the ResNet experiments.
+\end{itemize}
+
+\section{Conclusions}
+Spectral SNR merging proves to be a powerful tool for Transformer-based architectures, particularly for structural tasks like grammar checking where information is concentrated. However, its application in Convolutional Neural Networks (ResNet) is currently limited by the high sensitivity of convolutional hierarchies to layer-wise weight selection.
+The primary lesson from these experiments is that one size does not fit all:
+
+\begin{enumerate}
+    \item Structural tasks (CoLA) benefit from aggressive SNR winning strategies.
+    
+    \item Distributed semantic tasks (SST-2) are better served by Standard or Weighted merging to avoid losing subtle information.
+    
+    \item Vision tasks (ResNet) require more sophisticated, perhaps smoother, transition mechanisms between layers to avoid the performance collapses observed in the \texttt{snr\_lowB} and \texttt{snr\_max} trials.
+\end{enumerate}
+    
+% BIBLIOGRAPHY
+\begin{thebibliography}{9}
+
+\bibitem{marchenko1967}
+V. A. Marchenko and L. A. Pastur,
+``Distribution of eigenvalues for some sets of random matrices,''
+1967.
+
+\bibitem{devlin2018}
+J. Devlin et al.,
+``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding,''
+2018.
+
+\bibitem{wortsman2022}
+M. Wortsman et al.,
+``Model soups: averaging weights of multiple fine-tuned models improves accuracy,''
+2022.
+
+\bibitem{hartford_spectrum}
+Eric Hartford, Lucas Atkins, Fernando Fernandes Neto, and David Golchinfar,
+``Spectrum: Targeted Training on Signal to Noise Ratio.''
+
+\end{thebibliography}
+
+\end{document}
